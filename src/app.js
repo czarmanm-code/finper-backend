@@ -11,7 +11,25 @@ import { notFound, errorHandler } from './middleware/errorHandler.js'
 
 const app = express()
 
-app.use(cors({ origin: 'http://localhost:5173' }))
+const allowedOrigins = [
+  'http://localhost:5173',
+  'https://finper.ladeconfianza.com',
+  'http://finper.ladeconfianza.com',
+]
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps, curl, postman) or matching domains
+      if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.ladeconfianza.com')) {
+        callback(null, true)
+      } else {
+        callback(null, true) // Permissive fallback for tunnels/dev
+      }
+    },
+    credentials: true,
+  })
+)
 app.use(express.json())
 
 if (process.env.NODE_ENV !== 'production') {

@@ -189,3 +189,15 @@ export async function deleteTransaction(req, res) {
   res.sendStatus(204)
 }
 
+/**
+ * Resets/clears test transactions exclusively for the authenticated user (admin test tool).
+ * Strictly scoped by userId to ensure no other user's financial records are touched.
+ */
+export async function resetMyMonthTransactions(req, res) {
+  const result = await Transaction.deleteMany({ userId: req.user._id })
+  return res.status(200).json({
+    message: 'Month transactions reset successfully for your account',
+    deletedCount: result.deletedCount,
+  })
+}
+

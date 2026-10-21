@@ -5,6 +5,7 @@ import {
   createTransaction,
   updateTransaction,
   deleteTransaction,
+  resetMyMonthTransactions,
 } from '../controllers/transactionsController.js'
 import { authenticate } from '../middleware/auth.js'
 import { asyncHandler } from '../utils/asyncHandler.js'
@@ -15,6 +16,7 @@ const router = Router()
 router.use(authenticate)
 
 router.get('/', asyncHandler(getTransactions))
+router.post('/reset-month', asyncHandler(resetMyMonthTransactions))
 router.get('/:id', asyncHandler(getTransactionById))
 router.post('/', asyncHandler(createTransaction))
 router.patch('/:id', asyncHandler(updateTransaction))

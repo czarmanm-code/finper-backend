@@ -2,11 +2,14 @@ import crypto from 'crypto'
 import jwt from 'jsonwebtoken'
 import User from '../models/User.js'
 import Invitation from '../models/Invitation.js'
+import Category from '../models/Category.js'
+import Transaction from '../models/Transaction.js'
+import SavingGoal from '../models/SavingGoal.js'
 import { seedDefaultCategoriesForUser } from '../utils/seedDefaults.js'
 
 function generateToken(user) {
   const secret = process.env.JWT_SECRET || 'supersecretjwtkey_finper_dev_mode_change_in_production'
-  const expiresIn = process.env.JWT_EXPIRES_IN || '7d'
+  const expiresIn = process.env.JWT_EXPIRES_IN || '90d'
 
   return jwt.sign(
     {
@@ -17,6 +20,51 @@ function generateToken(user) {
     secret,
     { expiresIn }
   )
+}
+
+/**
+ * Public endpoint: Check system status (e.g. if any users exist, whether bootstrap is needed).
+ */
+export async function getSystemStatus(req, res) {
+  const totalUsers = await User.countDocuments()
+  return res.status(200).json({
+    needsSetup: totalUsers === 0,
+    totalUsers,
+  })
+}
+
+/**
+ * Public endpoint: Verify if an invitation token is valid before showing registration form.
+ */
+export async function verifyInvitation(req, res) {
+  const { token } = req.params
+
+  if (!token) {
+    return res.status(400).json({ message: 'Token is required' })
+  }
+
+  const invitation = await Invitation.findOne({ token }).populate('createdBy', 'name email')
+  if (!invitation) {
+    return res.status(404).json({ message: 'Invitation not found or invalid' })
+  }
+
+  if (invitation.used) {
+    return res.status(400).json({ message: 'This invitation token has already been used' })
+  }
+
+  if (new Date() > invitation.expiresAt) {
+    return res.status(400).json({ message: 'This invitation has expired' })
+  }
+
+  return res.status(200).json({
+    valid: true,
+    invitation: {
+      token: invitation.token,
+      assignedRole: invitation.assignedRole,
+      expiresAt: invitation.expiresAt,
+      invitedBy: invitation.createdBy?.name || 'Administrator',
+    },
+  })
 }
 
 /**
@@ -225,6 +273,20 @@ export async function listInvitations(req, res) {
 }
 
 /**
+ * Admin endpoint: Revoke / delete an invitation.
+ */
+export async function deleteInvitation(req, res) {
+  const { id } = req.params
+
+  const invitation = await Invitation.findByIdAndDelete(id)
+  if (!invitation) {
+    return res.status(404).json({ message: 'Invitation not found' })
+  }
+
+  return res.status(200).json({ message: 'Invitation revoked successfully' })
+}
+
+/**
  * Admin endpoint: List all users in the system.
  */
 export async function listUsers(req, res) {
@@ -235,3 +297,80 @@ export async function listUsers(req, res) {
   return res.status(200).json({ users })
 }
 
+/**
+ * Admin endpoint: Update user role or active status.
+ */
+export async function updateUser(req, res) {
+  const { id } = req.params
+  const { role, isActive, name } = req.body
+
+  const user = await User.findById(id)
+  if (!user) {
+    return res.status(404).json({ message: 'User not found' })
+  }
+
+  // Prevent admin from deactivating or demoting themselves
+  if (user._id.toString() === req.user._id.toString()) {
+    if (isActive === false) {
+      return res.status(400).json({ message: 'You cannot deactivate your own account' })
+    }
+    if (role && role !== 'admin') {
+      return res.status(400).json({ message: 'You cannot remove your own administrator role' })
+    }
+  }
+
+  if (role !== undefined) {
+    if (!['admin', 'user'].includes(role)) {
+      return res.status(400).json({ message: 'Role must be either "admin" or "user"' })
+    }
+    user.role = role
+  }
+
+  if (isActive !== undefined) {
+    user.isActive = Boolean(isActive)
+  }
+
+  if (name && typeof name === 'string') {
+    user.name = name.trim()
+  }
+
+  await user.save()
+
+  return res.status(200).json({
+    message: 'User updated successfully',
+    user: {
+      id: user._id.toString(),
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      isActive: user.isActive,
+    },
+  })
+}
+
+/**
+ * Admin endpoint: Delete user and purge their segmented financial data.
+ */
+export async function deleteUser(req, res) {
+  const { id } = req.params
+
+  if (id === req.user._id.toString()) {
+    return res.status(400).json({ message: 'You cannot delete your own account' })
+  }
+
+  const user = await User.findById(id)
+  if (!user) {
+    return res.status(404).json({ message: 'User not found' })
+  }
+
+  // Cascade delete all financial data belonging to this user
+  await Promise.all([
+    Transaction.deleteMany({ userId: user._id }),
+    Category.deleteMany({ userId: user._id }),
+    SavingGoal.deleteMany({ userId: user._id }),
+    Invitation.deleteMany({ createdBy: user._id }),
+    User.findByIdAndDelete(id),
+  ])
+
+  return res.status(200).json({ message: 'User and all associated data deleted successfully' })
+}
