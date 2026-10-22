@@ -21,7 +21,20 @@ export async function getCategories(req, res) {
     filter.type = req.query.type
   }
 
+  // Fetch sections to inherit section ordering
+  const sections = await Section.find({ userId: req.user._id }).sort('order')
+  const sectionOrderMap = new Map(sections.map((s, idx) => [s._id.toString(), s.order ?? idx]))
+
   const categories = await Category.find(filter).sort('order')
+
+  // Hierarchically sort categories: by section order first, then by category order inside the section
+  categories.sort((a, b) => {
+    const secA = a.sectionId ? (sectionOrderMap.get(a.sectionId.toString()) ?? 999) : 999
+    const secB = b.sectionId ? (sectionOrderMap.get(b.sectionId.toString()) ?? 999) : 999
+    if (secA !== secB) return secA - secB
+    return (a.order || 0) - (b.order || 0)
+  })
+
   res.json(categories)
 }
 

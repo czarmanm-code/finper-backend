@@ -126,6 +126,17 @@ export async function getSections(req, res) {
     return json
   })
 
+  // Ensure any unassigned categories are attached to the most relevant section so they are never lost
+  const unassigned = categoriesBySection.get('unassigned') || []
+  if (unassigned.length > 0) {
+    const fallbackSec =
+      result.find((s) => s.name.toLowerCase().includes('fixed') || s.name.toLowerCase().includes('variable')) ||
+      result[0]
+    if (fallbackSec) {
+      fallbackSec.categories.push(...unassigned)
+    }
+  }
+
   res.json(result)
 }
 
