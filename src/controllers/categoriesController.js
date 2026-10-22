@@ -1,5 +1,6 @@
 import mongoose from 'mongoose'
 import Category from '../models/Category.js'
+import Section from '../models/Section.js'
 import { seedDefaultCategoriesForUser } from '../utils/seedDefaults.js'
 
 function httpError(status, message) {
@@ -28,14 +29,26 @@ export async function getCategories(req, res) {
  * Create a new category strictly isolated to the authenticated user.
  */
 export async function createCategory(req, res) {
-  const { name, type, icon = 'tag', color = '#3b82f6', sectionId, plannedAmount = 0 } = req.body
+  let { name, type, icon = 'TagIcon', color = '#3b82f6', sectionId, plannedAmount = 0 } = req.body
 
   if (!name || typeof name !== 'string' || name.trim() === '') {
     throw httpError(400, 'Category name is required')
   }
 
+  // Derive type from section if not provided explicitly
+  if (!type && sectionId && mongoose.isValidObjectId(sectionId)) {
+    const section = await Section.findOne({ _id: sectionId, userId: req.user._id })
+    if (section) {
+      const lowerSec = section.name.toLowerCase()
+      type =
+        lowerSec.includes('income') || lowerSec.includes('salary') || lowerSec.includes('ingreso')
+          ? 'income'
+          : 'expense'
+    }
+  }
+
   if (!type || !['income', 'expense'].includes(type)) {
-    throw httpError(400, 'Category type must be either income or expense')
+    type = 'expense'
   }
 
   const order = await Category.countDocuments({ userId: req.user._id })
@@ -64,7 +77,7 @@ export async function updateCategory(req, res) {
     throw httpError(404, 'Category not found')
   }
 
-  const { name, type, icon, color, plannedAmount } = req.body
+  const { name, type, icon, color, plannedAmount, sectionId } = req.body
   const updates = {}
 
   if (name !== undefined) {
@@ -84,6 +97,9 @@ export async function updateCategory(req, res) {
   if (icon !== undefined) updates.icon = icon
   if (color !== undefined) updates.color = color
   if (plannedAmount !== undefined) updates.plannedAmount = Math.max(0, Number(plannedAmount) || 0)
+  if (sectionId !== undefined) {
+    updates.sectionId = sectionId && mongoose.isValidObjectId(sectionId) ? sectionId : undefined
+  }
 
   const category = await Category.findOneAndUpdate(
     { _id: id, userId: req.user._id },
