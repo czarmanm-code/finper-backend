@@ -1,11 +1,54 @@
 import mongoose from 'mongoose'
 import Transaction from '../models/Transaction.js'
 import Category from '../models/Category.js'
+import { seedDefaultCategoriesForUser } from '../utils/seedDefaults.js'
 
 function httpError(status, message) {
   const error = new Error(message)
   error.status = status
   return error
+}
+
+/**
+ * Resiliently resolves a category for the user, gracefully handling
+ * offline/fallback identifiers (e.g., 'cat-food', 'cat-salary') or category names.
+ */
+async function resolveUserCategory(userId, categoryId, type) {
+  await seedDefaultCategoriesForUser(userId)
+
+  if (categoryId && mongoose.isValidObjectId(categoryId)) {
+    const existing = await Category.findOne({ _id: categoryId, userId })
+    if (existing) return existing
+  }
+
+  const fallbackIdToName = {
+    'cat-salary': 'Salary',
+    'cat-vouchers': 'Food Vouchers',
+    'cat-investments-inc': 'Investments & Returns',
+    'cat-investments': 'Investments & Returns',
+    'cat-housing': 'Housing & Rent',
+    'cat-food': 'Food & Groceries',
+    'cat-transport': 'Transportation',
+    'cat-utilities': 'Utilities & Services',
+    'cat-entertainment': 'Entertainment',
+  }
+
+  const targetName = fallbackIdToName[categoryId] || categoryId
+
+  if (targetName && typeof targetName === 'string') {
+    const byName = await Category.findOne({
+      userId,
+      name: { $regex: new RegExp(`^${targetName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+    })
+    if (byName) return byName
+  }
+
+  if (type) {
+    const fallbackByType = await Category.findOne({ userId, type })
+    if (fallbackByType) return fallbackByType
+  }
+
+  return Category.findOne({ userId })
 }
 
 /**
@@ -90,20 +133,15 @@ export async function createTransaction(req, res) {
     throw httpError(400, 'Type must be either income or expense')
   }
 
-  if (!mongoose.isValidObjectId(categoryId)) {
-    throw httpError(400, 'A valid categoryId is required')
-  }
-
-  // Ensure category belongs to the current user
-  const category = await Category.findOne({ _id: categoryId, userId: req.user._id })
+  const category = await resolveUserCategory(req.user._id, categoryId, type)
   if (!category) {
-    throw httpError(404, 'Category not found or does not belong to the user')
+    throw httpError(400, 'No valid category found for user')
   }
 
   const transaction = await Transaction.create({
     amount,
     type,
-    categoryId,
+    categoryId: category._id,
     date: date ? new Date(date) : new Date(),
     description: description ? description.trim() : '',
     receiptUrl: receiptUrl ? receiptUrl.trim() : null,
@@ -143,14 +181,11 @@ export async function updateTransaction(req, res) {
   }
 
   if (categoryId !== undefined) {
-    if (!mongoose.isValidObjectId(categoryId)) {
-      throw httpError(400, 'A valid categoryId is required')
-    }
-    const category = await Category.findOne({ _id: categoryId, userId: req.user._id })
+    const category = await resolveUserCategory(req.user._id, categoryId, updates.type || type)
     if (!category) {
-      throw httpError(404, 'Category not found or does not belong to the user')
+      throw httpError(400, 'No valid category found for user')
     }
-    updates.categoryId = categoryId
+    updates.categoryId = category._id
   }
 
   if (date !== undefined) updates.date = new Date(date)

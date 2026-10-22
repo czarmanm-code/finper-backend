@@ -48,7 +48,13 @@ const transactionSchema = new mongoose.Schema(
     toJSON: {
       transform(doc, ret) {
         ret.id = ret._id.toString()
-        ret.categoryId = ret.categoryId ? ret.categoryId.toString() : ret.categoryId
+        if (ret.categoryId && typeof ret.categoryId === 'object') {
+          if (ret.categoryId._id) {
+            ret.categoryId.id = ret.categoryId._id.toString()
+          }
+        } else if (ret.categoryId) {
+          ret.categoryId = ret.categoryId.toString()
+        }
         ret.userId = ret.userId ? ret.userId.toString() : ret.userId
         delete ret._id
         delete ret.__v
