@@ -50,7 +50,9 @@ const categorySchema = new mongoose.Schema(
       transform(doc, ret) {
         ret.id = ret._id.toString()
         ret.userId = ret.userId ? ret.userId.toString() : ret.userId
-        if (ret.sectionId) ret.sectionId = ret.sectionId.toString()
+        if (ret.sectionId && ret.sectionId instanceof mongoose.Types.ObjectId) {
+          ret.sectionId = ret.sectionId.toString()
+        }
         delete ret._id
         delete ret.__v
       },

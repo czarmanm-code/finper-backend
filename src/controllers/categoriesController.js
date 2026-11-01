@@ -21,9 +21,10 @@ export async function getCategories(req, res) {
     filter.type = req.query.type
   }
 
-  // Fetch sections to inherit section ordering
+  // Fetch sections to inherit section ordering and map section names
   const sections = await Section.find({ userId: req.user._id }).sort('order')
   const sectionOrderMap = new Map(sections.map((s, idx) => [s._id.toString(), s.order ?? idx]))
+  const sectionMap = new Map(sections.map((s) => [s._id.toString(), s]))
 
   const categories = await Category.find(filter).sort('order')
 
@@ -35,7 +36,14 @@ export async function getCategories(req, res) {
     return (a.order || 0) - (b.order || 0)
   })
 
-  res.json(categories)
+  const payload = categories.map((cat) => {
+    const json = cat.toJSON()
+    const sec = cat.sectionId ? sectionMap.get(cat.sectionId.toString()) : null
+    json.sectionName = sec ? sec.name : null
+    return json
+  })
+
+  res.json(payload)
 }
 
 /**
@@ -77,7 +85,13 @@ export async function createCategory(req, res) {
     userId: req.user._id,
   })
 
-  res.status(201).json(category)
+  const json = category.toJSON()
+  if (json.sectionId) {
+    const sec = await Section.findOne({ _id: json.sectionId, userId: req.user._id })
+    json.sectionName = sec ? sec.name : null
+  }
+
+  res.status(201).json(json)
 }
 
 /**
@@ -124,7 +138,13 @@ export async function updateCategory(req, res) {
     throw httpError(404, 'Category not found')
   }
 
-  res.json(category)
+  const json = category.toJSON()
+  if (json.sectionId) {
+    const sec = await Section.findOne({ _id: json.sectionId, userId: req.user._id })
+    json.sectionName = sec ? sec.name : null
+  }
+
+  res.json(json)
 }
 
 /**
