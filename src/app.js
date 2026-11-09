@@ -7,6 +7,7 @@ import categoriesRoutes from './routes/categories.js'
 import transactionsRoutes from './routes/transactions.js'
 import savingGoalsRoutes from './routes/savingGoals.js'
 import loansRoutes from './routes/loans.js'
+import investmentsRoutes from './routes/investments.js'
 import sectionsRoutes from './routes/sections.js'
 import { notFound, errorHandler } from './middleware/errorHandler.js'
 
@@ -48,6 +49,7 @@ app.use('/api/categories', categoriesRoutes)
 app.use('/api/transactions', transactionsRoutes)
 app.use('/api/saving-goals', savingGoalsRoutes)
 app.use('/api/loans', loansRoutes)
+app.use('/api/investments', investmentsRoutes)
 
 // Legacy / Section layout endpoints
 app.use('/api/sections', sectionsRoutes)
